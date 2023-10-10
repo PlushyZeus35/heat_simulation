@@ -1,0 +1,2 @@
+gcc heat.c -o simulation -lpthread
+
