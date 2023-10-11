@@ -10,11 +10,14 @@
 #define X_GRID2 X_GRID*X_GRID
 #define Y_GRID2 Y_GRID*Y_GRID
 #define DT X_GRID2 * Y_GRID2 / (2.0 * DIFFUSION_CONSTANT * (X_GRID2 + Y_GRID2))
+#define ARR_X_LENGTH 200
+#define ARR_Y_LENGTH 100
+#define REGULAR_TEMP 50.0
+#define MAX_TEMP 100.0
+#define MIN_TEMP 0.0
+#define EMPTY -1.0
 
 int THREAD_NUMBER = 100;
-int ARR_X_LENGHT = 50;
-int ARR_Y_LENGHT = 5;
-int REGULAR_TEMP = 50.0;
 int sum = 0;
 struct ThreadData {
 	long threadId;
@@ -22,7 +25,7 @@ struct ThreadData {
 };
 
 // Function definitions
-void initArrData(float*);
+void initArrData(float*, int, int, int);
 void* threadFunction(void*);
 int getArrIndex(int, int);
 void showArr(float*);
@@ -32,8 +35,10 @@ int main(){
 	long threadId;
 	// Initialize array data
 	float* arrData;
-	arrData = malloc(ARR_X_LENGHT * ARR_Y_LENGHT * sizeof(float));
-	initArrData(arrData);
+	arrData = malloc(ARR_X_LENGTH * ARR_Y_LENGTH * sizeof(float));
+	// Set radius hole
+	float radius = (ARR_X_LENGTH/6.0) * (ARR_X_LENGTH/6.0);
+	initArrData(arrData, radius, ARR_X_LENGTH/2, 5*ARR_Y_LENGTH/6);
 	showArr(arrData);
 
 	// Initialize struct data
@@ -63,11 +68,27 @@ int main(){
 	free(arrData);
 }
 
-void initArrData(float *arr){
+void initArrData(float *arr, int radius, int centerX, int centerY){
 	int i,j;
-        for(i=0; i<ARR_Y_LENGHT; i++){
-                for(j=0; j<ARR_X_LENGHT; j++){
-                        arr[getArrIndex(i,j)] = REGULAR_TEMP;
+        for(i=0; i<ARR_Y_LENGTH; i++){
+                for(j=0; j<ARR_X_LENGTH; j++){
+					int index = getArrIndex(i, j);
+					float rad = (i-centerX) * (i-centerX) + (j-centerY)*(j-centerY);
+					if(rad<radius){
+						// Set empty hole
+						arr[index] = EMPTY;
+					}else{
+						// Set regular temperature
+						arr[index] = REGULAR_TEMP;
+					}
+					// Set max temp
+					if(j==0){
+						arr[index] = MAX_TEMP;
+					}
+					// Set min temp
+					if(j==ARR_X_LENGTH-1){
+						arr[index] = MIN_TEMP;
+					}
                 }
         }
 }
@@ -79,14 +100,14 @@ void* threadFunction(void *arg){
 } 
 
 int getArrIndex(int y, int x){
-	return y * ARR_X_LENGHT + x;
+	return y * ARR_X_LENGTH + x;
 }
 
 void showArr(float *arr){
 	int i,j;
-	for(i=0; i<ARR_Y_LENGHT; i++){
+	for(i=0; i<ARR_Y_LENGTH; i++){
 		printf("|");
-		for(j=0; j<ARR_X_LENGHT; j++){
+		for(j=0; j<ARR_X_LENGTH; j++){
 			printf(" %f ", arr[getArrIndex(i,j)]);
 		}
 		printf("|\n");
@@ -94,5 +115,5 @@ void showArr(float *arr){
 }
 
 float calcTemp(float prevX, float prevY, float postX, float postY, float actual){
-	return 1.0;
+	return actual + DIFFUSION_CONSTANT * DT * ( (prevY - 2.0*actual + postY)/X_GRID2 + (prevX - 2.0*actual + postX)/Y_GRID2);
 }
