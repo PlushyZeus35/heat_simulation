@@ -8,6 +8,12 @@
 #define VACIO -1.00
 #define nx 200
 #define ny 200
+#define a 0.1     // Diffusion constant
+#define dx 0.01   // Horizontal grid spacing
+#define dy 0.01   // Vertical grid spacing
+#define dx2 dx*dx
+#define dy2 dy*dy
+#define dt dx2 * dy2 / (2.0 * a * (dx2 + dy2)) // Largest stable time step
 
 #include <stdio.h>
 #include <stdlib.h>
