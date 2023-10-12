@@ -219,4 +219,3 @@ void cmap(double value, const double scaling, const double offset,
     }
 }
 
-

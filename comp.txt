@@ -1,2 +1,2 @@
 gcc heat.c -o simulation -lpthread
-
+gcc heat_hueco.c pngwriter.c -lpng -o simulation
