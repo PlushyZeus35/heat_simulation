@@ -87,7 +87,7 @@ void main()
     // Main loop
     for (int n = 0; n <= numSteps; n++)
     {
-        // Going through the entire area
+                // Going through the entire area
         for (int i = 0; i < nx; i++)
         {
             for (int j = 1; j < ny-1; j++)
@@ -132,7 +132,7 @@ void main()
         if (n % outputEvery == 0)
         {
             char filename[64];
-            sprintf(filename, "heat_%05d.png", n);
+            sprintf(filename, "temp/heat_%05d.png", n);
             save_png(Un, nx, ny, filename, 'c');
         }
         // Swapping the pointers for the next timestep
