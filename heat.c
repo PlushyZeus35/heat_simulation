@@ -3,23 +3,33 @@
 #include <stdlib.h> 
 #include <string.h>
 #include "pngwriter.h"
+#include <semaphore.h>
 
 // Problem configuration
 #define DIFFUSION_CONSTANT 0.1
 #define X_GRID 0.01
 #define Y_GRID 0.01
-#define ARR_X_LENGTH 20
-#define ARR_Y_LENGTH 20
+#define ARR_X_LENGTH 200
+#define ARR_Y_LENGTH 200
 #define REGULAR_TEMP 50.0
 #define MAX_TEMP 100.0
 #define MIN_TEMP 0.1
 #define EMPTY -1.0
+#define NUM_STEPS 5000
+#define EACH_STAMP 1000
 
-#define RADIUS 0  // Radio del círculo
+#define RADIUS 500  // Radio del círculo
 #define CENTER_X 50  // Coordenada x del centro
 #define CENTER_Y 50  // Coordenada y del centro
 
+// Global data
 int THREAD_NUMBER = 30;
+float* plateInfo;
+float* oldPlateInfo;
+float dt;
+float dx2;
+float dy2;
+int totalCells;
 
 struct ProblemConfiguration {
 	float dx2;
@@ -34,74 +44,132 @@ struct ThreadData {
 	int* cells;
 	struct ProblemConfiguration* problemConfiguration;
 };
+pthread_barrier_t barrier;
+sem_t sem;
 
 // Function definitions
-void initArrData(float*);
+void initArrData(struct ThreadData*);
 void* threadExecution(void*);
 int getArrIndex(int, int);
 void showArr(float*);
 void saveStatusPng(float*, int);
-float heatFormula(struct ProblemConfiguration*, float, float, float, float, float);
-void initProblemConfiguration(struct ProblemConfiguration*, float*, float*);
+float heatFormula(float, float, float, float, float);
+void initProblemConfiguration();
 void initThreadData(struct ThreadData*, struct ProblemConfiguration*);
-void calcPointHeat(struct ProblemConfiguration*, int);
+void calcPointHeat(int, int);
 int isIndexInLastColumn(int);
 int isIndexInFirstColumn(int);
 int isIndexInLastRow(int);
 int isIndexInFirstRow(int);
+int isIndexAbleToEvaluate(float*, int);
+int getYaxis(int);
+int getXaxis(int);
+void showProblemConfig(struct ProblemConfiguration* problemConfig);
 
 int main(){
-	printf("19 es %d\n", isIndexInLastColumn(19));
-	float* arrayData;
-	float* auxArrData;
 	float* temp;
-	struct ProblemConfiguration* problemConfiguration;
-	arrayData = malloc(ARR_X_LENGTH * ARR_Y_LENGTH * sizeof(float));
-	auxArrData = malloc(ARR_X_LENGTH * ARR_Y_LENGTH * sizeof(float));
-	problemConfiguration = malloc(1 * sizeof(struct ProblemConfiguration));
-	initArrData(arrayData);
-	memcpy(auxArrData, arrayData, ARR_X_LENGTH * ARR_Y_LENGTH * sizeof(float));
-	saveStatusPng(arrayData, 0);
-	//saveStatusPng(arrayData, 2);
-	initProblemConfiguration(problemConfiguration, arrayData, auxArrData);
+	struct ThreadData* threadData;
+	// Sync utilities
+	pthread_barrier_init(&barrier, NULL, THREAD_NUMBER+1);
+	sem_init(&sem, 0, THREAD_NUMBER);
+
+	// Init main info
+	initProblemConfiguration();
+	threadData = malloc((THREAD_NUMBER+1)*sizeof(struct ThreadData));
+	plateInfo = malloc(totalCells * sizeof(float));
+	oldPlateInfo = malloc(totalCells * sizeof(float));
+	
+	initArrData(threadData);
+	memcpy(oldPlateInfo, plateInfo, totalCells * sizeof(float));
 
 	// Create threads
-	long threadId;
+	int threadId;
 	pthread_t* threadHandlers;
 	threadHandlers = malloc(THREAD_NUMBER*sizeof(pthread_t));
-	struct ThreadData* threadData;
-	threadData = malloc(THREAD_NUMBER*sizeof(struct ThreadData));
-	initThreadData(threadData, problemConfiguration);
 	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
 		pthread_create(&threadHandlers[threadId], NULL, threadExecution, &threadData[threadId]);
+	}
+
+	int i,j;
+	for(j=0; j<NUM_STEPS; j++){
+		for(i=0; i<threadData[THREAD_NUMBER].howMany; i++){
+			int y = getYaxis(threadData[THREAD_NUMBER].cells[i]);
+			int x = getXaxis(threadData[THREAD_NUMBER].cells[i]);
+			calcPointHeat(y, x);
+		}
+		pthread_barrier_wait(&barrier);
+
+		// switch plates
+		temp = plateInfo;
+		plateInfo = oldPlateInfo;
+		oldPlateInfo = temp;
+
+		if (j % EACH_STAMP == 0)
+        {
+           saveStatusPng(plateInfo, j);
+        }
+
+		for (int i = 0; i < THREAD_NUMBER; i++) {
+        	sem_post(&sem); // Incrementar el semáforo en 1 valor
+    	}
 	}
 
 	// Wait for threads
 	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
 		pthread_join(threadHandlers[threadId], NULL);
 	}
-	saveStatusPng(arrayData, 1);
+
 	// Free memory 
 	free(threadHandlers);
-	free(arrayData);
-	free(auxArrData);
+	free(plateInfo);
+	free(oldPlateInfo);
 	free(threadData);
+	pthread_barrier_destroy(&barrier);
+	sem_destroy(&sem);
 }
 
-void initArrData(float *arr){
-	int i, j;
+void initArrData(struct ThreadData* threadData){
+	int i, j, cellsToEvaluate=0;
 	for(i=0; i<ARR_Y_LENGTH; i++){
 		for(j=0; j<ARR_X_LENGTH; j++){
-			arr[getArrIndex(i, j)] = REGULAR_TEMP;
-
 			// Draw empty circle
 			double distance = (i - CENTER_X) * (i - CENTER_X) + (j - CENTER_Y) * (j - CENTER_Y);
             if (distance <= RADIUS) {
-                arr[getArrIndex(i, j)] = EMPTY;
-            }
+                plateInfo[getArrIndex(i, j)] = EMPTY;
+            }else{
+				plateInfo[getArrIndex(i, j)] = REGULAR_TEMP;
+				cellsToEvaluate++;
+			}
 		}
-		arr[getArrIndex(i, 0)] = MIN_TEMP;
-		arr[getArrIndex(i, ARR_X_LENGTH-1)] = MAX_TEMP;
+		plateInfo[getArrIndex(i, 0)] = MIN_TEMP;
+		plateInfo[getArrIndex(i, ARR_X_LENGTH-1)] = MAX_TEMP;
+	}
+
+	// Split cells to evaluate between all threads
+	cellsToEvaluate=cellsToEvaluate - ARR_Y_LENGTH*2;
+	int numOfThreads = THREAD_NUMBER +1;
+	int rest = cellsToEvaluate%numOfThreads;
+	int cellForEachThread = (cellsToEvaluate-rest)/numOfThreads;
+	long threadId;
+	int actualCell=0;
+	for(threadId=0; threadId<numOfThreads; threadId++){
+		int numCells = cellForEachThread;
+		if(rest){
+			rest--;
+			numCells++;
+		}
+		threadData[threadId].howMany = numCells;
+		threadData[threadId].cells = malloc(numCells*sizeof(int));
+		int index = actualCell;
+		int auxIndex = 0;
+		while(numCells>0){
+			if(isIndexAbleToEvaluate(plateInfo, actualCell)){
+				threadData[threadId].cells[auxIndex] = actualCell;
+				auxIndex++;
+				numCells--;
+			}
+			actualCell++;
+		}
 	}
 }
 
@@ -114,7 +182,6 @@ void initThreadData(struct ThreadData* threadData, struct ProblemConfiguration* 
 			totalCells++;
 		}
 	}
-	printf("total cells %d\n", totalCells);
 	int rest = totalCells%THREAD_NUMBER;
 	int numCells = (totalCells-rest)/THREAD_NUMBER;
 	int indexRecord = 0;
@@ -137,43 +204,17 @@ void initThreadData(struct ThreadData* threadData, struct ProblemConfiguration* 
 			auxIndex++;
 		}
 	}
-	/*
-	int threadId;
-	int totalCells = ARR_X_LENGTH * ARR_Y_LENGTH;
-	totalCells = totalCells - (ARR_Y_LENGTH*2);
-	int rest = totalCells%THREAD_NUMBER;
-	int numCells = (totalCells-rest)/THREAD_NUMBER;
-	int cellIndex = 0;
-	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
-		int howManyCells = numCells;
-		int j;
-		if(rest){
-			howManyCells++;
-			rest--;
-		}
-		threadData[threadId].cells = malloc(howManyCells*sizeof(int));
-		threadData[threadId].howMany = howManyCells;
-		threadData[threadId].problemConfiguration = problemConfiguration;
-		for(j=0; j<(ARR_X_LENGTH*ARR_Y_LENGTH); j++){
-			printf("Evaluando %d\n", cellIndex);
-			if(!isIndexInFirstColumn(cellIndex) && !isIndexInFirstColumn(cellIndex+1)){
-				printf("Poniendolo\n");
-				threadData[threadId].cells[j] = cellIndex;
-			}
-			cellIndex++;
-		}
-	}*/
 }
 
-//! Esta función no funciona
-int isIndexInLastColumn(int index){
-	int next = index+1;
-	int total = ARR_X_LENGTH*ARR_Y_LENGTH;
-
-	if(index==19){
-		printf("next %d total %d y resto %d\n", next, total, next%total);
+int isIndexAbleToEvaluate(float* arr, int index){
+	if(isIndexInFirstColumn(index) || isIndexInFirstColumn(index+1) || arr[index]==EMPTY){
+		return 0;
 	}
-	if(next%total==0){
+	return 1;
+}
+
+int isIndexInLastColumn(int index){
+	if(isIndexInFirstColumn(index+1)){
 		return 1;
 	}
 	return 0;
@@ -202,11 +243,19 @@ int isIndexInFirstRow(int index){
 
 void* threadExecution(void* arg){
 	struct ThreadData *threadData = (struct ThreadData *)arg;
-	int cellsTam = sizeof(threadData->cells)/sizeof(threadData->cells[0]);
-	printf("Soy hilo y tengo %d a mi cargo %d\n", threadData->howMany, cellsTam);
-	int i;
-	for(i=0; i<threadData->howMany; i++){
-		//calcPointHeat(threadData->problemConfiguration, threadData->cells[i]);
+	int i,j;
+	float* temp;
+	for(j=0; j<NUM_STEPS; j++){
+		sem_wait(&sem);
+		int counter =0;
+		for(i=0; i<threadData->howMany; i++){
+			int y = getYaxis(threadData->cells[i]);
+			int x = getXaxis(threadData->cells[i]);
+			calcPointHeat(y, x);
+		}
+		
+		//int ret = pthread_barrier_wait(&(threadArgs->barrier));
+		pthread_barrier_wait(&barrier);
 	}
 }
 
@@ -225,8 +274,8 @@ void showArr(float *arr){
 	}
 }
 
-float heatFormula(struct ProblemConfiguration* problemConfiguration, float actual, float prevY, float postY, float prevX, float postX){
-    return actual + DIFFUSION_CONSTANT * problemConfiguration->dt * ( (prevY - 2.0*actual + postY)/problemConfiguration->dx2 + (prevX - 2.0*actual + postX)/problemConfiguration->dy2 );
+float heatFormula(float actual, float prevY, float postY, float prevX, float postX){
+    return actual + DIFFUSION_CONSTANT * dt * ( (prevY - 2.0*actual + postY)/dx2 + (prevX - 2.0*actual + postX)/dy2 );
 }
 
 void saveStatusPng(float* arr, int stepNum){
@@ -235,14 +284,14 @@ void saveStatusPng(float* arr, int stepNum){
     save_png(arr, ARR_Y_LENGTH, ARR_X_LENGTH, filename, 'c');
 }
 
-void initProblemConfiguration(struct ProblemConfiguration* probConfig, float* arr, float* auxArr){
-	probConfig->arr = arr;
-	probConfig->auxArr = auxArr;
-	probConfig->dx2 = X_GRID*X_GRID;
-	probConfig->dy2 = Y_GRID*Y_GRID;
-	probConfig->dt = probConfig->dx2 * probConfig->dy2 / (2.0 * DIFFUSION_CONSTANT * (probConfig->dx2 + probConfig->dy2));
+void initProblemConfiguration(){
+	totalCells = ARR_X_LENGTH * ARR_Y_LENGTH;
+	dx2 = X_GRID * X_GRID;
+	dy2 = Y_GRID * Y_GRID;
+	dt = dx2 * dy2 / (2.0 * DIFFUSION_CONSTANT * (dx2 + dy2));
 }
 
+/*
 void calcPointHeat(struct ProblemConfiguration* problemConfiguration, int cellNumber){
     float actual = problemConfiguration->arr[cellNumber];
     // 
@@ -288,8 +337,71 @@ void calcPointHeat(struct ProblemConfiguration* problemConfiguration, int cellNu
     //Un[index] = calcHeat(actual, prevY, postY, prevX, postX);
     // Explicit scheme
     if (actual<0.0)
-        problemConfiguration->arr[cellNumber]=actual;  // si es un punto que no existe (centro del disco no hay que evaluar su calor)
+        problemConfiguration->auxArr[cellNumber]=actual;  // si es un punto que no existe (centro del disco no hay que evaluar su calor)
     else
-        problemConfiguration->arr[cellNumber] = heatFormula(problemConfiguration, actual, prevY, postY, prevX, postX);
+        problemConfiguration->auxArr[cellNumber] = heatFormula(problemConfiguration, actual, prevY, postY, prevX, postX);
         //problemConfiguration->arr[index] = actual + a * problemConfiguration->dt * ( (prevY - 2.0*actual + postY)/problemConfiguration->dx2 + (prevX - 2.0*actual + postX)/problemConfiguration->dy2 );
+}*/
+
+
+void calcPointHeat(int indexY, int indexX){
+    const int index = getArrIndex(indexY, indexX);
+    float actual = oldPlateInfo[index];
+    // 
+    float prevY;
+    if (indexY>0)
+        prevY = oldPlateInfo[getArrIndex(indexY-1, indexX)];
+    else
+        prevY = EMPTY; // no existe como el centro del disco
+
+    if (prevY<0)
+        prevY=actual; //si no existe no hay tranferencia de calor por lo es como si vale igual que el punto a evaluar
+
+
+    float prevX = oldPlateInfo[getArrIndex(indexY, indexX-1)];
+    if (prevX<0)
+        prevX=actual;  //si no existe no hay tranferencia de calor por lo es como si vale igual que el punto a evaluar
+
+    float postY;
+    if (indexY<ARR_X_LENGTH-1)
+        postY = oldPlateInfo[getArrIndex(indexY+1, indexX)];
+    else
+        postY = EMPTY; // no existe como el centro del disco
+
+    if (postY<0)
+        postY=actual;  //si no existe no hay tranferencia de calor por lo es como si vale igual que el punto a evaluar
+
+
+    float postX = oldPlateInfo[getArrIndex(indexY, indexX+1)];
+    if (postX<0)
+        postX=actual;  //si no existe no hay tranferencia de calor por lo es como si vale igual que el punto a evaluar
+    
+    // Explicit scheme
+    if (actual<0.0)
+        plateInfo[index]=actual;  // si es un punto que no existe (centro del disco no hay que evaluar su calor)
+    else
+        plateInfo[index] = heatFormula(actual, prevY, postY, prevX, postX);
+        //problemConfiguration->arr[index] = actual + a * problemConfiguration->dt * ( (prevY - 2.0*actual + postY)/problemConfiguration->dx2 + (prevX - 2.0*actual + postX)/problemConfiguration->dy2 );
+}
+
+int getYaxis(int index){
+	int rest = index % ARR_X_LENGTH;
+	int auxIndex = index - rest;
+	return auxIndex / ARR_X_LENGTH;
+}
+
+int getXaxis(int index){
+	return index % ARR_X_LENGTH;
+}
+
+void showProblemConfig(struct ProblemConfiguration* problemConfig){
+	printf("PROBLEM CONFIG\n");
+	printf("DIFFUSION CONSTANT %f \n", DIFFUSION_CONSTANT);
+	printf("ARR X LENGTH %d\n", ARR_X_LENGTH);
+	printf("ARR Y LENGTH %d \n", ARR_Y_LENGTH);
+	printf("DX %f \n", X_GRID);
+	printf("DY %f \n", Y_GRID);
+	printf("DX2 %f \n", problemConfig->dx2);
+	printf("DY2 %f \n", problemConfig->dy2);
+	printf("DT %f \n", problemConfig->dt);
 }
