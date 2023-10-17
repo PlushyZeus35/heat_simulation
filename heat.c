@@ -4,18 +4,18 @@
 #include <string.h>
 #include "pngwriter.h"
 #include <semaphore.h>
+#include <time.h>
 
 // Problem configuration
 #define DIFFUSION_CONSTANT 0.1
 #define X_GRID 0.01
 #define Y_GRID 0.01
-#define ARR_X_LENGTH 200
+#define ARR_X_LENGTH 250
 #define ARR_Y_LENGTH 200
 #define REGULAR_TEMP 50.0
 #define MAX_TEMP 100.0
 #define MIN_TEMP 0.1
 #define EMPTY -1.0
-#define NUM_STEPS 5000
 #define EACH_STAMP 1000
 
 #define RADIUS 500  // Radio del círculo
@@ -23,7 +23,8 @@
 #define CENTER_Y 50  // Coordenada y del centro
 
 // Global data
-int THREAD_NUMBER = 30;
+int THREAD_NUMBER=8;
+int NUM_STEPS=5000;
 float* plateInfo;
 float* oldPlateInfo;
 float dt;
@@ -48,6 +49,7 @@ pthread_barrier_t barrier;
 sem_t sem;
 
 // Function definitions
+void linealExecution();
 void initArrData(struct ThreadData*);
 void* threadExecution(void*);
 int getArrIndex(int, int);
@@ -55,8 +57,8 @@ void showArr(float*);
 void saveStatusPng(float*, int);
 float heatFormula(float, float, float, float, float);
 void initProblemConfiguration();
-void initThreadData(struct ThreadData*, struct ProblemConfiguration*);
-void calcPointHeat(int, int);
+void showInitMessage(int);
+void calcPointHeat(int);
 int isIndexInLastColumn(int);
 int isIndexInFirstColumn(int);
 int isIndexInLastRow(int);
@@ -66,26 +68,38 @@ int getYaxis(int);
 int getXaxis(int);
 void showProblemConfig(struct ProblemConfiguration* problemConfig);
 
-int main(){
+int main(int argc, char *argv[]){
 	float* temp;
 	struct ThreadData* threadData;
-	// Sync utilities
-	pthread_barrier_init(&barrier, NULL, THREAD_NUMBER+1);
-	sem_init(&sem, 0, THREAD_NUMBER);
+	time_t start, end;
+    double seconds;
 
 	// Init main info
 	initProblemConfiguration();
 	threadData = malloc((THREAD_NUMBER+1)*sizeof(struct ThreadData));
 	plateInfo = malloc(totalCells * sizeof(float));
 	oldPlateInfo = malloc(totalCells * sizeof(float));
+
+	// Sync utilities
+	pthread_barrier_init(&barrier, NULL, THREAD_NUMBER+1);
+	sem_init(&sem, 0, THREAD_NUMBER);
 	
 	initArrData(threadData);
 	memcpy(oldPlateInfo, plateInfo, totalCells * sizeof(float));
+
+	if(argc==2 && atoi(argv[1])!=-1 && atoi(argv[1])==0){
+		// Ejecutar version lineal
+		linealExecution();
+		exit(1);
+	}
+
+	showInitMessage(1);
 
 	// Create threads
 	int threadId;
 	pthread_t* threadHandlers;
 	threadHandlers = malloc(THREAD_NUMBER*sizeof(pthread_t));
+	start = time(NULL);
 	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
 		pthread_create(&threadHandlers[threadId], NULL, threadExecution, &threadData[threadId]);
 	}
@@ -93,9 +107,7 @@ int main(){
 	int i,j;
 	for(j=0; j<NUM_STEPS; j++){
 		for(i=0; i<threadData[THREAD_NUMBER].howMany; i++){
-			int y = getYaxis(threadData[THREAD_NUMBER].cells[i]);
-			int x = getXaxis(threadData[THREAD_NUMBER].cells[i]);
-			calcPointHeat(y, x);
+			calcPointHeat(threadData[THREAD_NUMBER].cells[i]);
 		}
 		pthread_barrier_wait(&barrier);
 
@@ -118,6 +130,9 @@ int main(){
 	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
 		pthread_join(threadHandlers[threadId], NULL);
 	}
+	end = time(NULL);
+    seconds = difftime(end, start);
+	printf("Tiempo transcurrido: %.2f segundos\n", seconds);
 
 	// Free memory 
 	free(threadHandlers);
@@ -126,6 +141,35 @@ int main(){
 	free(threadData);
 	pthread_barrier_destroy(&barrier);
 	sem_destroy(&sem);
+}
+
+void linealExecution(){
+	showInitMessage(0);
+	clock_t start, end;
+    double cpu_time_used;
+	float* temp;
+	start = clock();
+	for (int n = 0; n <= NUM_STEPS; n++)
+    {
+        // Going through the entire area
+        // Loop each row (y axis)
+        for (int i = 0; i < totalCells; i++)
+        {
+            calcPointHeat(i);
+        }
+        // Write the output if needed
+        if (n % EACH_STAMP == 0)
+        {
+            saveStatusPng(plateInfo, n);
+        }
+        // 
+        temp=plateInfo;
+        plateInfo=oldPlateInfo;
+        oldPlateInfo=temp;
+    }
+	end = clock();
+	cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+	 printf("Tiempo de ejecución: %f segundos\n", cpu_time_used);
 }
 
 void initArrData(struct ThreadData* threadData){
@@ -173,39 +217,6 @@ void initArrData(struct ThreadData* threadData){
 	}
 }
 
-//! Dividir las celdas a calcular entre el número de hilos (ponerlo en cada threadData)
-void initThreadData(struct ThreadData* threadData, struct ProblemConfiguration* problemConfiguration){
-	int i;
-	int totalCells;
-	for(i=0; i<(ARR_X_LENGTH*ARR_Y_LENGTH); i++){
-		if(!isIndexInFirstColumn(i) && !isIndexInFirstColumn(i+1) && problemConfiguration->arr[i]!=EMPTY){
-			totalCells++;
-		}
-	}
-	int rest = totalCells%THREAD_NUMBER;
-	int numCells = (totalCells-rest)/THREAD_NUMBER;
-	int indexRecord = 0;
-	for(i=0; i<THREAD_NUMBER; i++){
-		int howManyCells = numCells;
-		int j;
-		if(rest){
-			howManyCells++;
-			rest--;
-		}
-		threadData[i].cells = malloc(howManyCells*sizeof(int));
-		threadData[i].problemConfiguration = problemConfiguration;
-		int auxIndex = indexRecord;
-		int counter=0;
-		while(counter<howManyCells){
-			if(!isIndexInFirstColumn(auxIndex) && !isIndexInFirstColumn(auxIndex+1) && problemConfiguration->arr[auxIndex]!=EMPTY){
-				threadData[i].cells[counter] = auxIndex;
-				counter++;
-			}
-			auxIndex++;
-		}
-	}
-}
-
 int isIndexAbleToEvaluate(float* arr, int index){
 	if(isIndexInFirstColumn(index) || isIndexInFirstColumn(index+1) || arr[index]==EMPTY){
 		return 0;
@@ -249,12 +260,8 @@ void* threadExecution(void* arg){
 		sem_wait(&sem);
 		int counter =0;
 		for(i=0; i<threadData->howMany; i++){
-			int y = getYaxis(threadData->cells[i]);
-			int x = getXaxis(threadData->cells[i]);
-			calcPointHeat(y, x);
+			calcPointHeat(threadData->cells[i]);
 		}
-		
-		//int ret = pthread_barrier_wait(&(threadArgs->barrier));
 		pthread_barrier_wait(&barrier);
 	}
 }
@@ -291,97 +298,43 @@ void initProblemConfiguration(){
 	dt = dx2 * dy2 / (2.0 * DIFFUSION_CONSTANT * (dx2 + dy2));
 }
 
-/*
-void calcPointHeat(struct ProblemConfiguration* problemConfiguration, int cellNumber){
-    float actual = problemConfiguration->arr[cellNumber];
-    // 
+void calcPointHeat(int index){
+    float actual = oldPlateInfo[index];
+    if(actual < 0.0 || isIndexInFirstColumn(index) || actual == MAX_TEMP)
+		return;
     float prevY;
-    // Evaluar si hay trans de calor, sino poner valor actual
-	if((cellNumber-ARR_X_LENGTH)<0){
-		prevY = actual;
-	}else if(problemConfiguration->arr[cellNumber-ARR_X_LENGTH]==EMPTY){
+	if(isIndexInFirstRow(index) || oldPlateInfo[index-ARR_X_LENGTH]==EMPTY){
 		prevY = actual;
 	}else{
-		prevY = problemConfiguration->arr[cellNumber-ARR_X_LENGTH];
+		prevY = oldPlateInfo[index-ARR_X_LENGTH];
 	}
 
     float prevX;
-	if(cellNumber%ARR_X_LENGTH==0){
-		prevX = actual;
-	}else if(problemConfiguration->arr[cellNumber-1]==EMPTY){
+	if(isIndexInFirstColumn(index) || oldPlateInfo[index-1]==EMPTY){
 		prevX = actual;
 	}else{
-		prevX = problemConfiguration->arr[cellNumber-1];
+		prevX = oldPlateInfo[index-1];
 	}
 
     float postY;
-    if((cellNumber+ARR_X_LENGTH)>(ARR_X_LENGTH*ARR_Y_LENGTH)){
-		postY = actual;
-	}else if(problemConfiguration->arr[cellNumber+ARR_X_LENGTH]==EMPTY){
+	if(isIndexInLastRow(index) || oldPlateInfo[index+ARR_X_LENGTH]==EMPTY){
 		postY = actual;
 	}else{
-		postY = problemConfiguration->arr[cellNumber+ARR_X_LENGTH];
+		postY = oldPlateInfo[index+ARR_X_LENGTH];
 	}
 
     float postX;
-	if(cellNumber+1>=ARR_X_LENGTH*ARR_Y_LENGTH){
-		postX = actual;
-	}else if(cellNumber+1%ARR_X_LENGTH==0){
-		postX = actual;
-	}else if(problemConfiguration->arr[cellNumber+1]==EMPTY){
+	if(isIndexInLastColumn(index) || oldPlateInfo[index+1]==EMPTY){
 		postX = actual;
 	}else{
-		postX = problemConfiguration->arr[cellNumber+1];
+		postX = oldPlateInfo[index+1];
 	}
     
-    //Un[index] = calcHeat(actual, prevY, postY, prevX, postX);
     // Explicit scheme
     if (actual<0.0)
-        problemConfiguration->auxArr[cellNumber]=actual;  // si es un punto que no existe (centro del disco no hay que evaluar su calor)
-    else
-        problemConfiguration->auxArr[cellNumber] = heatFormula(problemConfiguration, actual, prevY, postY, prevX, postX);
-        //problemConfiguration->arr[index] = actual + a * problemConfiguration->dt * ( (prevY - 2.0*actual + postY)/problemConfiguration->dx2 + (prevX - 2.0*actual + postX)/problemConfiguration->dy2 );
-}*/
-
-
-void calcPointHeat(int indexY, int indexX){
-    const int index = getArrIndex(indexY, indexX);
-    float actual = oldPlateInfo[index];
-    // 
-    float prevY;
-    if (indexY>0)
-        prevY = oldPlateInfo[getArrIndex(indexY-1, indexX)];
-    else
-        prevY = EMPTY; // no existe como el centro del disco
-
-    if (prevY<0)
-        prevY=actual; //si no existe no hay tranferencia de calor por lo es como si vale igual que el punto a evaluar
-
-
-    float prevX = oldPlateInfo[getArrIndex(indexY, indexX-1)];
-    if (prevX<0)
-        prevX=actual;  //si no existe no hay tranferencia de calor por lo es como si vale igual que el punto a evaluar
-
-    float postY;
-    if (indexY<ARR_X_LENGTH-1)
-        postY = oldPlateInfo[getArrIndex(indexY+1, indexX)];
-    else
-        postY = EMPTY; // no existe como el centro del disco
-
-    if (postY<0)
-        postY=actual;  //si no existe no hay tranferencia de calor por lo es como si vale igual que el punto a evaluar
-
-
-    float postX = oldPlateInfo[getArrIndex(indexY, indexX+1)];
-    if (postX<0)
-        postX=actual;  //si no existe no hay tranferencia de calor por lo es como si vale igual que el punto a evaluar
-    
-    // Explicit scheme
-    if (actual<0.0)
-        plateInfo[index]=actual;  // si es un punto que no existe (centro del disco no hay que evaluar su calor)
+        plateInfo[index]=actual;
     else
         plateInfo[index] = heatFormula(actual, prevY, postY, prevX, postX);
-        //problemConfiguration->arr[index] = actual + a * problemConfiguration->dt * ( (prevY - 2.0*actual + postY)/problemConfiguration->dx2 + (prevX - 2.0*actual + postX)/problemConfiguration->dy2 );
 }
 
 int getYaxis(int index){
@@ -404,4 +357,17 @@ void showProblemConfig(struct ProblemConfiguration* problemConfig){
 	printf("DX2 %f \n", problemConfig->dx2);
 	printf("DY2 %f \n", problemConfig->dy2);
 	printf("DT %f \n", problemConfig->dt);
+}
+
+void showInitMessage(int mode){
+	if(mode){
+		// Ejecucion paralelizada
+		printf("INICIANDO SIMULACIÓN PARALELIZADA\n");
+		printf("Numero de hilos: %d\n", THREAD_NUMBER);
+		printf("Numero de iteraciones de tiempo: %d\n", NUM_STEPS);
+	}else{
+		// Ejecucion lineal
+		printf("INICIANDO SIMULACIÓN LINEAL\n");
+		printf("Numero de iteraciones de tiempo: %d\n", NUM_STEPS);
+	}
 }
