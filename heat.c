@@ -4,7 +4,7 @@
 #include <string.h>
 #include "pngwriter.h"
 #include <semaphore.h>
-#include <time.h>
+#include <sys/time.h>
 
 // Problem configuration
 #define DIFFUSION_CONSTANT 0.1
@@ -32,18 +32,13 @@ float dx2;
 float dy2;
 int totalCells;
 
-struct ProblemConfiguration {
-	float dx2;
-    float dy2;
-    float dt;
-	float* arr;
-    float* auxArr;
-};
+// Time data
+struct timeval start, end;
+long seconds, useconds;
 
 struct ThreadData {
 	int howMany;
 	int* cells;
-	struct ProblemConfiguration* problemConfiguration;
 };
 pthread_barrier_t barrier;
 sem_t sem;
@@ -56,7 +51,7 @@ int getArrIndex(int, int);
 void showArr(float*);
 void saveStatusPng(float*, int);
 float heatFormula(float, float, float, float, float);
-void initProblemConfiguration();
+void initProblemConfiguration(int, char *args[]);
 void showInitMessage(int);
 void calcPointHeat(int);
 int isIndexInLastColumn(int);
@@ -66,16 +61,14 @@ int isIndexInFirstRow(int);
 int isIndexAbleToEvaluate(float*, int);
 int getYaxis(int);
 int getXaxis(int);
-void showProblemConfig(struct ProblemConfiguration* problemConfig);
+void showFinishMessage(double);
 
 int main(int argc, char *argv[]){
 	float* temp;
 	struct ThreadData* threadData;
-	time_t start, end;
-    double seconds;
 
 	// Init main info
-	initProblemConfiguration();
+	initProblemConfiguration(argc, argv);
 	threadData = malloc((THREAD_NUMBER+1)*sizeof(struct ThreadData));
 	plateInfo = malloc(totalCells * sizeof(float));
 	oldPlateInfo = malloc(totalCells * sizeof(float));
@@ -87,7 +80,7 @@ int main(int argc, char *argv[]){
 	initArrData(threadData);
 	memcpy(oldPlateInfo, plateInfo, totalCells * sizeof(float));
 
-	if(argc==2 && atoi(argv[1])!=-1 && atoi(argv[1])==0){
+	if(argc>1 && atoi(argv[1])!=-1 && atoi(argv[1])==0){
 		// Ejecutar version lineal
 		linealExecution();
 		exit(1);
@@ -99,7 +92,9 @@ int main(int argc, char *argv[]){
 	int threadId;
 	pthread_t* threadHandlers;
 	threadHandlers = malloc(THREAD_NUMBER*sizeof(pthread_t));
-	start = time(NULL);
+	
+	gettimeofday(&start, NULL);
+
 	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
 		pthread_create(&threadHandlers[threadId], NULL, threadExecution, &threadData[threadId]);
 	}
@@ -130,9 +125,12 @@ int main(int argc, char *argv[]){
 	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
 		pthread_join(threadHandlers[threadId], NULL);
 	}
-	end = time(NULL);
-    seconds = difftime(end, start);
-	printf("Tiempo transcurrido: %.2f segundos\n", seconds);
+	
+	gettimeofday(&end, NULL);
+    seconds = end.tv_sec - start.tv_sec;
+    useconds = end.tv_usec - start.tv_usec;
+    double elapsed = seconds + useconds / 1e6;
+	showFinishMessage(elapsed);
 
 	// Free memory 
 	free(threadHandlers);
@@ -145,10 +143,8 @@ int main(int argc, char *argv[]){
 
 void linealExecution(){
 	showInitMessage(0);
-	clock_t start, end;
-    double cpu_time_used;
 	float* temp;
-	start = clock();
+	gettimeofday(&start, NULL);
 	for (int n = 0; n <= NUM_STEPS; n++)
     {
         // Going through the entire area
@@ -167,9 +163,11 @@ void linealExecution(){
         plateInfo=oldPlateInfo;
         oldPlateInfo=temp;
     }
-	end = clock();
-	cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-	 printf("Tiempo de ejecución: %f segundos\n", cpu_time_used);
+	gettimeofday(&end, NULL);
+    seconds = end.tv_sec - start.tv_sec;
+    useconds = end.tv_usec - start.tv_usec;
+    double elapsed = seconds + useconds / 1e6;
+	showFinishMessage(elapsed);
 }
 
 void initArrData(struct ThreadData* threadData){
@@ -204,7 +202,6 @@ void initArrData(struct ThreadData* threadData){
 		}
 		threadData[threadId].howMany = numCells;
 		threadData[threadId].cells = malloc(numCells*sizeof(int));
-		int index = actualCell;
 		int auxIndex = 0;
 		while(numCells>0){
 			if(isIndexAbleToEvaluate(plateInfo, actualCell)){
@@ -255,15 +252,18 @@ int isIndexInFirstRow(int index){
 void* threadExecution(void* arg){
 	struct ThreadData *threadData = (struct ThreadData *)arg;
 	int i,j;
-	float* temp;
 	for(j=0; j<NUM_STEPS; j++){
+		// Wait for the main thread to swap data pointers
 		sem_wait(&sem);
-		int counter =0;
+		// Calc heat on thread points
 		for(i=0; i<threadData->howMany; i++){
 			calcPointHeat(threadData->cells[i]);
 		}
+		// Wait for all threads
 		pthread_barrier_wait(&barrier);
 	}
+	// End of execution
+	pthread_exit(NULL);
 }
 
 int getArrIndex(int y, int x){
@@ -291,7 +291,17 @@ void saveStatusPng(float* arr, int stepNum){
     save_png(arr, ARR_Y_LENGTH, ARR_X_LENGTH, filename, 'c');
 }
 
-void initProblemConfiguration(){
+void initProblemConfiguration(int argc, char *args[]){
+	if(argc==3){
+		if(atoi(args[2])!=-1)
+			NUM_STEPS = atoi(args[2]);
+	}
+	if(argc==4){
+		if(atoi(args[2])!=-1)
+			NUM_STEPS = atoi(args[2]);
+		if(atoi(args[3])!=-1)
+			THREAD_NUMBER = atoi(args[3]);
+	}
 	totalCells = ARR_X_LENGTH * ARR_Y_LENGTH;
 	dx2 = X_GRID * X_GRID;
 	dy2 = Y_GRID * Y_GRID;
@@ -347,16 +357,11 @@ int getXaxis(int index){
 	return index % ARR_X_LENGTH;
 }
 
-void showProblemConfig(struct ProblemConfiguration* problemConfig){
-	printf("PROBLEM CONFIG\n");
-	printf("DIFFUSION CONSTANT %f \n", DIFFUSION_CONSTANT);
-	printf("ARR X LENGTH %d\n", ARR_X_LENGTH);
-	printf("ARR Y LENGTH %d \n", ARR_Y_LENGTH);
-	printf("DX %f \n", X_GRID);
-	printf("DY %f \n", Y_GRID);
-	printf("DX2 %f \n", problemConfig->dx2);
-	printf("DY2 %f \n", problemConfig->dy2);
-	printf("DT %f \n", problemConfig->dt);
+void showFinishMessage(double time){
+	printf("SIMULACIÓN FINALIZADA\n");
+	printf("----------------------\n");
+	printf("\x1b[34mTiempo total de ejecución: %f\n", time);
+	printf("-------------------------------------\n");
 }
 
 void showInitMessage(int mode){
@@ -365,9 +370,11 @@ void showInitMessage(int mode){
 		printf("INICIANDO SIMULACIÓN PARALELIZADA\n");
 		printf("Numero de hilos: %d\n", THREAD_NUMBER);
 		printf("Numero de iteraciones de tiempo: %d\n", NUM_STEPS);
+		printf("-------------------------------------\n");
 	}else{
 		// Ejecucion lineal
 		printf("INICIANDO SIMULACIÓN LINEAL\n");
 		printf("Numero de iteraciones de tiempo: %d\n", NUM_STEPS);
+		printf("-------------------------------------\n");
 	}
 }
