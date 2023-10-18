@@ -361,7 +361,7 @@ void showFinishMessage(double time){
 	printf("SIMULACIÓN FINALIZADA\n");
 	printf("----------------------\n");
 	printf("\x1b[34mTiempo total de ejecución: %f\n", time);
-	printf("-------------------------------------\n");
+	printf("\x1b[0m-------------------------------------\n");
 }
 
 void showInitMessage(int mode){
