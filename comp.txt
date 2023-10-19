@@ -1,2 +1,0 @@
-gcc heat.c pngwriter.c -o simulation -lpng -lpthread
-gcc heat_hueco.c pngwriter.c -lpng -o simulation
