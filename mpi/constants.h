@@ -6,7 +6,7 @@
 #define X_GRID 0.01
 #define Y_GRID 0.01
 #define ARR_X_LENGTH 200
-#define ARR_Y_LENGTH 200
+#define ARR_Y_LENGTH 130
 #define REGULAR_TEMP 50.0
 #define MAX_TEMP 100.0
 #define MIN_TEMP 0.1
@@ -17,6 +17,8 @@
 #define RADIUS 2000  // Radio del círculo
 #define CENTER_X 50  // Coordenada x del centro
 #define CENTER_Y 50  // Coordenada y del centro
+
+#define MASTER_RANK 0
 
 typedef struct {
 	int top;

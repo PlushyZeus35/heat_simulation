@@ -11,6 +11,7 @@ int main(int argc, char** argv){
 	int nProcs, rank;
 	float* arr;
 	float* arrAux;
+	float* tempAux;
 	MPI_Init(&argc, &argv);
 	// Separación de comunicadores
 	/*MPI_Comm_size(MPI_COMM_WORLD, &nProcs);
@@ -37,51 +38,67 @@ int main(int argc, char** argv){
 		printf("Soy %d y he recibido esto %s\n",1, mensaje);
 	}*/
 	arr = initArrData();
-	arrAux = (float *)malloc(ARR_X_LENGTH * ARR_Y_LENGTH * sizeof(float));
-	memcpy(arrAux, arr, ARR_X_LENGTH * ARR_Y_LENGTH * sizeof(float));
+	arrAux = initArrAuxData(arr);
+	//arrAux = (float *)malloc(ARR_X_LENGTH * ARR_Y_LENGTH * sizeof(float));
+	//memcpy(arrAux, arr, ARR_X_LENGTH * ARR_Y_LENGTH * sizeof(float));
 	MPI_Comm_size(MPI_COMM_WORLD, &nProcs);
 	if(isMaster()){
 		//showInitMessage();
 		//stampArray(arr, 1, getProcessRank());
 	}
 	
-	int rest = ARR_X_LENGTH % nProcs;
-	int rowsPerProcess = (ARR_X_LENGTH-rest)/nProcs;
+	int rest = ARR_Y_LENGTH % nProcs;
+	int rowsPerProcess = (ARR_Y_LENGTH-rest)/nProcs;
 	int rowInit = getProcessRank() * rowsPerProcess;
 	int rowEnd = rowInit + rowsPerProcess - 1;
 	// Hay que sumarle al último proceso el resto (las filas que quedan)
 	if(getProcessRank()==nProcs-1){
-		rowEnd = ARR_X_LENGTH - 1;
+		rowEnd = ARR_Y_LENGTH - 1;
 	}
 	Neigs neigs = getNeighbors();
 	printf("%d/%d [%d-%d] %d - %d\n", getProcessRank(), nProcs-1, rowInit, rowEnd, neigs.top, neigs.bottom);
-	for(int i=rowInit; i<=rowEnd; i++){
-		for(int j=0; j<ARR_Y_LENGTH; j++){
-			calcPointHeat(arrAux, arr, getArrIndex(i, j));
-			//calcTest(arrAux, i, j);
+	
+	for(int k=0; k<NUM_STEPS; k++){
+		for(int i=rowInit; i<=rowEnd; i++){
+			for(int j=0; j<ARR_X_LENGTH; j++){
+				if(getArrIndex(i,j)>=99999){
+					printf("%d calculando fila %d columna %d celda %d\n", getProcessRank(), i, j, getArrIndex(i,j));
+				}
+				calcPointHeat(arrAux, arr, getArrIndex(i, j));
+				//calcTest(arrAux, i, j);
+			}
 		}
+		
+		// Enviar a neigs la fila de valores necesaria
+		sendRowToNeigs(arrAux, neigs, rowInit, rowEnd);
+		// Recibir de sus neigs la final de valores necesaria
+		receiveRowFromNeigs(arrAux, neigs, rowInit, rowEnd);
+		
+		// In each stamp all processes needs to merge all info
+		if(k%EACH_STAMP==0){
+			if(isMaster()){
+				// Recibir una comunicación por cada proceso y juntar la info
+				receiveUpdatesFromProcess(arr, nProcs);
+				stampArray(arr, k, getProcessRank());
+			}else{
+				// Enviar a master todo su array
+				sendUpdateToMaster(arr, rowInit, rowEnd);
+			}
+		}
+		
+		// Intercambiar array
+		tempAux = arr;
+		arr = arrAux;
+		arrAux = tempAux;
+		//printf("uno\n");
 	}
-	// Enviar a neigs la fila de valores necesaria
-	// Recibir de sus neigs la final de valores necesaria
-	// Intercambiar array
-	// Bucle iteraciones
-	stampArray(arr, 1, getProcessRank());
+	
+	
+	
 	free(arr);
+	free(arrAux);
 	
-	/*if(isMaster()){
-		printf("SOY MASTER\n");
-		arr = initArrData();
-		printf("%f", arr[0]);
-		stampArray(arr, 1, 0);
-		printf("SAVED");
-		free(arr);
-	}else{
-		printf("NO SOY NAIDE\n");
-	}*/
 	
-	//MPI_Comm_size(newComm, &nProcs);
-	//MPI_Comm_rank(newComm, &rank);
-	//printf("Hello from processor %d of %d\n", rank, nProcs-1);
 	
 	MPI_Finalize();
 	

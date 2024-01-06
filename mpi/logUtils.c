@@ -25,3 +25,9 @@ void stampArray(float* arr, int iteration, int rank){
     sprintf(filename, "temp/heat_%d_%d.png", iteration, rank);
     save_png(arr, ARR_Y_LENGTH, ARR_X_LENGTH, filename, 'c');
 }
+
+void showArr(float* arr, int counter){
+	for(int i=0; i<counter; i++){
+		printf(" %f ", arr[i]);
+	}
+}

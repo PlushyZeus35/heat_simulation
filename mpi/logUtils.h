@@ -4,5 +4,6 @@
 void showFinishMessage(double time);
 void showInitMessage(void);
 void stampArray(float* arr, int iteration, int rank);
+void showArr(float* arr, int counter);
 
 #endif

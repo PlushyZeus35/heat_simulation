@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "constants.h"
+#include <string.h>
 // Problem configuration
 
 float heatFormula(float actual, float prevY, float postY, float prevX, float postX){
@@ -69,6 +70,13 @@ float* initArrData(void){
 		arr[getArrIndex(i, ARR_X_LENGTH-1)] = MAX_TEMP;
 	}
 	return arr;
+}
+
+float* initArrAuxData(float* arr){
+	int totalCells = ARR_X_LENGTH * ARR_Y_LENGTH;
+	float* arrAux = (float *)malloc(totalCells * sizeof(float));
+	memcpy(arrAux, arr, totalCells * sizeof(float));
+	return arrAux;
 }
 
 int isIndexAbleToEvaluate(float* arr, int index){
