@@ -40,9 +40,6 @@ void sendRowToNeigs(float* arr, Neigs neigs, int fromRow, int toRow){
 	if(neigs.top>=0){
 		rowToSend = arr;
 		rowToSend = rowToSend + getArrIndex(fromRow, 0);
-		//printf("\n");
-		//showArr(rowToSend, ARR_X_LENGTH);
-		//printf("\n");
 		MPI_Send(rowToSend, ARR_X_LENGTH, MPI_FLOAT, neigs.top, 1, MPI_COMM_WORLD);
 	}
 	
@@ -60,25 +57,14 @@ void receiveRowFromNeigs(float* arr, Neigs neigs, int fromRow, int toRow){
 		rowToReceive = arr;
 		rowToReceive = rowToReceive + getArrIndex(fromRow-1, 0);
 		MPI_Recv(rowToReceive, ARR_X_LENGTH, MPI_FLOAT, neigs.top, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		/*float* copyAux = arr;
-		copyAux = copyAux + getArrIndex(fromRow-1, 0);
-		for(int i=0; i<ARR_X_LENGTH; i++){
-			copyAux[i] = rowToReceive[i];
-		}*/
 	}
-	//free(rowToReceive);
-	//rowToReceive = (float*)malloc(ARR_X_LENGTH * sizeof(float));
+	
 	if(neigs.bottom>=0){
 		rowToReceive = arr;
 		rowToReceive = rowToReceive + getArrIndex(toRow+1, 0);
 		MPI_Recv(rowToReceive, ARR_X_LENGTH, MPI_FLOAT, neigs.bottom, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		/*float* copyAux = arr;
-		copyAux = copyAux + getArrIndex(toRow+1, 0);
-		for(int i=0; i<ARR_X_LENGTH; i++){
-			copyAux[i] = rowToReceive[i];
-		}*/
 	}
-	//free(rowToReceive);
+
 }
 
 void sendUpdateToMaster(float* arr, int rowInit, int rowEnd){

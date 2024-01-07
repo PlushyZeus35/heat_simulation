@@ -5,14 +5,15 @@
 #define DIFFUSION_CONSTANT 0.1
 #define X_GRID 0.01
 #define Y_GRID 0.01
-#define ARR_X_LENGTH 200
-#define ARR_Y_LENGTH 130
+#define ARR_X_LENGTH 500
+#define ARR_Y_LENGTH 430
 #define REGULAR_TEMP 50.0
 #define MAX_TEMP 100.0
 #define MIN_TEMP 0.1
 #define EMPTY -1.0
 #define EACH_STAMP 1000
 #define NUM_STEPS 5000
+#define DEBUG 0
 
 #define RADIUS 2000  // Radio del círculo
 #define CENTER_X 50  // Coordenada x del centro

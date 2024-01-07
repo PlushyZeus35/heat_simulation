@@ -7,7 +7,9 @@
 void showFinishMessage(double time){
 	printf("SIMULACIÓN FINALIZADA\n");
 	printf("----------------------\n");
-	printf("\x1b[34mTiempo total de ejecución: %f\n", time);
+	printf("Tamaño de matriz %d x %d\n", ARR_X_LENGTH, ARR_Y_LENGTH);
+	printf("Numero de iteraciones: %d\n", NUM_STEPS);
+	printf("\x1b[34mTiempo total de ejecucion: %f\n", time);
 	printf("\x1b[0m-------------------------------------\n");
 }
 
