@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "constants.h"
 #include <string.h>
-// Problem configuration
+#include "simulationUtils.h"
 
 float heatFormula(float actual, float prevY, float postY, float prevX, float postX){
 	float dx2 = X_GRID * X_GRID;

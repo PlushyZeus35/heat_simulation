@@ -1,11 +1,12 @@
 #!/bin/bash
-PROCESS=4
-EXECUTABLE="simulation"
+THREADS=4
+EXECUTIONFILE="simulation"
 TEMPDIRECTORY="temp"
 
 if [ "$#" -ge 1 ]; then
-	PROCESS=$1
+	THREADS=$1
 fi
+
 # Verificar si la carpeta 'temp' existe
 if [ -d "$TEMPDIRECTORY" ]; then
     # Borrar la carpeta 'temp' y su contenido
@@ -15,6 +16,7 @@ fi
 
 mkdir "$TEMPDIRECTORY"
 echo "Carpeta $TEMPDIRECTORY creada de nuevo."
+
 make clean
 make
-mpirun -np $PROCESS $EXECUTABLE
+./$EXECUTIONFILE $THREADS

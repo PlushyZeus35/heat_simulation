@@ -8,7 +8,7 @@
 #include <string.h>
 
 int main(int argc, char** argv){
-	int nProcs, rank;
+	int nProcs;
 	float* arr;
 	float* arrAux;
 	float* tempAux;
