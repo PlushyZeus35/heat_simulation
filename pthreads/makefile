@@ -2,7 +2,7 @@
 TARGET = simulation
 
 # Fuentes
-SRCS = heat.c pngwriter.c
+SRCS = heat.c constants.h pngwriter.c
 
 # Opciones de compilación
 CFLAGS = -Wall -Wextra -lpng -lpthread

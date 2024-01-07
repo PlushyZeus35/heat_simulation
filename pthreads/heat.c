@@ -5,26 +5,9 @@
 #include "pngwriter.h"
 #include <semaphore.h>
 #include <sys/time.h>
-
-// Problem configuration
-#define DIFFUSION_CONSTANT 0.1
-#define X_GRID 0.01
-#define Y_GRID 0.01
-#define ARR_X_LENGTH 500
-#define ARR_Y_LENGTH 500
-#define REGULAR_TEMP 50.0
-#define MAX_TEMP 100.0
-#define MIN_TEMP 0.1
-#define EMPTY -1.0
-#define EACH_STAMP 1000
-
-#define RADIUS 500  // Radio del círculo
-#define CENTER_X 50  // Coordenada x del centro
-#define CENTER_Y 50  // Coordenada y del centro
+#include "constants.h"
 
 // Global data
-int THREAD_NUMBER=8;
-int NUM_STEPS=5000;
 float* plateInfo;
 float* oldPlateInfo;
 float dt;
@@ -44,15 +27,13 @@ pthread_barrier_t barrier;
 sem_t sem;
 
 // Function definitions
-void linealExecution();
-void initArrData(struct ThreadData*);
+void initArrData(struct ThreadData*, int);
 void* threadExecution(void*);
 int getArrIndex(int, int);
 void showArr(float*);
 void saveStatusPng(float*, int);
 float heatFormula(float, float, float, float, float);
-void initProblemConfiguration(int, char *args[]);
-void showInitMessage(int);
+void initProblemConfiguration(void);
 void calcPointHeat(int);
 int isIndexInLastColumn(int);
 int isIndexInFirstColumn(int);
@@ -61,48 +42,45 @@ int isIndexInFirstRow(int);
 int isIndexAbleToEvaluate(float*, int);
 int getYaxis(int);
 int getXaxis(int);
-void showFinishMessage(double, int, int);
+void showFinishMessage(double, int);
 
 int main(int argc, char *argv[]){
 	float* temp;
 	struct ThreadData* threadData;
-
+	int threadsNumber = 8;
+	if(argc>1){
+		threadsNumber = atoi(argv[1]);
+	}
+	
+	// Init time log
+	gettimeofday(&start, NULL);
+	
 	// Init main info
-	initProblemConfiguration(argc, argv);
-	threadData = malloc((THREAD_NUMBER+1)*sizeof(struct ThreadData));
+	initProblemConfiguration();
+	threadData = malloc((threadsNumber+1)*sizeof(struct ThreadData));
 	plateInfo = malloc(totalCells * sizeof(float));
 	oldPlateInfo = malloc(totalCells * sizeof(float));
 
 	// Sync utilities
-	pthread_barrier_init(&barrier, NULL, THREAD_NUMBER+1);
-	sem_init(&sem, 0, THREAD_NUMBER);
+	pthread_barrier_init(&barrier, NULL, threadsNumber+1);
+	sem_init(&sem, 0, threadsNumber);
 	
-	initArrData(threadData);
+	initArrData(threadData, threadsNumber);
 	memcpy(oldPlateInfo, plateInfo, totalCells * sizeof(float));
-
-	if(argc>1 && atoi(argv[1])!=-1 && atoi(argv[1])==0){
-		// Ejecutar version lineal
-		linealExecution();
-		exit(1);
-	}
-
-	showInitMessage(1);
 
 	// Create threads
 	int threadId;
 	pthread_t* threadHandlers;
-	threadHandlers = malloc(THREAD_NUMBER*sizeof(pthread_t));
-	
-	gettimeofday(&start, NULL);
+	threadHandlers = malloc(threadsNumber*sizeof(pthread_t));
 
-	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
+	for(threadId=0; threadId<threadsNumber; threadId++){
 		pthread_create(&threadHandlers[threadId], NULL, threadExecution, &threadData[threadId]);
 	}
 
 	int i,j;
-	for(j=0; j<NUM_STEPS; j++){
-		for(i=0; i<threadData[THREAD_NUMBER].howMany; i++){
-			calcPointHeat(threadData[THREAD_NUMBER].cells[i]);
+	for(j=0; j<=NUM_STEPS; j++){
+		for(i=0; i<threadData[threadsNumber].howMany; i++){
+			calcPointHeat(threadData[threadsNumber].cells[i]);
 		}
 		pthread_barrier_wait(&barrier);
 
@@ -116,21 +94,22 @@ int main(int argc, char *argv[]){
            saveStatusPng(plateInfo, j);
         }
 
-		for (int i = 0; i < THREAD_NUMBER; i++) {
+		for (int i = 0; i < threadsNumber; i++) {
         	sem_post(&sem); // Incrementar el semáforo en 1 valor
     	}
 	}
 
 	// Wait for threads
-	for(threadId=0; threadId<THREAD_NUMBER; threadId++){
+	for(threadId=0; threadId<threadsNumber; threadId++){
 		pthread_join(threadHandlers[threadId], NULL);
 	}
 	
+	// Calculate execution time
 	gettimeofday(&end, NULL);
     seconds = end.tv_sec - start.tv_sec;
     useconds = end.tv_usec - start.tv_usec;
     double elapsed = seconds + useconds / 1e6;
-	showFinishMessage(elapsed, THREAD_NUMBER, NUM_STEPS);
+	showFinishMessage(elapsed, threadsNumber);
 
 	// Free memory 
 	free(threadHandlers);
@@ -141,36 +120,10 @@ int main(int argc, char *argv[]){
 	sem_destroy(&sem);
 }
 
-void linealExecution(){
-	showInitMessage(0);
-	float* temp;
-	gettimeofday(&start, NULL);
-	for (int n = 0; n <= NUM_STEPS; n++)
-    {
-        // Going through the entire area
-        // Loop each row (y axis)
-        for (int i = 0; i < totalCells; i++)
-        {
-            calcPointHeat(i);
-        }
-        // Write the output if needed
-        if (n % EACH_STAMP == 0)
-        {
-            saveStatusPng(plateInfo, n);
-        }
-        // 
-        temp=plateInfo;
-        plateInfo=oldPlateInfo;
-        oldPlateInfo=temp;
-    }
-	gettimeofday(&end, NULL);
-    seconds = end.tv_sec - start.tv_sec;
-    useconds = end.tv_usec - start.tv_usec;
-    double elapsed = seconds + useconds / 1e6;
-	showFinishMessage(elapsed, 1, NUM_STEPS);
-}
-
-void initArrData(struct ThreadData* threadData){
+// This method initialize array plate data
+// Also divide the array cells among different threads. 
+// A cell is considered for computation if it does not have the maximum or minimum temperature and is not a hole.
+void initArrData(struct ThreadData* threadData, int threadNumber){
 	int i, j, cellsToEvaluate=0;
 	for(i=0; i<ARR_Y_LENGTH; i++){
 		for(j=0; j<ARR_X_LENGTH; j++){
@@ -189,7 +142,7 @@ void initArrData(struct ThreadData* threadData){
 
 	// Split cells to evaluate between all threads
 	cellsToEvaluate=cellsToEvaluate - ARR_Y_LENGTH*2;
-	int numOfThreads = THREAD_NUMBER +1;
+	int numOfThreads = threadNumber +1;
 	int rest = cellsToEvaluate%numOfThreads;
 	int cellForEachThread = (cellsToEvaluate-rest)/numOfThreads;
 	long threadId;
@@ -252,7 +205,7 @@ int isIndexInFirstRow(int index){
 void* threadExecution(void* arg){
 	struct ThreadData *threadData = (struct ThreadData *)arg;
 	int i,j;
-	for(j=0; j<NUM_STEPS; j++){
+	for(j=0; j<=NUM_STEPS; j++){
 		// Wait for the main thread to swap data pointers
 		sem_wait(&sem);
 		// Calc heat on thread points
@@ -291,17 +244,7 @@ void saveStatusPng(float* arr, int stepNum){
     save_png(arr, ARR_Y_LENGTH, ARR_X_LENGTH, filename, 'c');
 }
 
-void initProblemConfiguration(int argc, char *args[]){
-	if(argc==3){
-		if(atoi(args[2])!=-1)
-			NUM_STEPS = atoi(args[2]);
-	}
-	if(argc==4){
-		if(atoi(args[2])!=-1)
-			NUM_STEPS = atoi(args[2]);
-		if(atoi(args[3])!=-1)
-			THREAD_NUMBER = atoi(args[3]);
-	}
+void initProblemConfiguration(){
 	totalCells = ARR_X_LENGTH * ARR_Y_LENGTH;
 	dx2 = X_GRID * X_GRID;
 	dy2 = Y_GRID * Y_GRID;
@@ -357,7 +300,7 @@ int getXaxis(int index){
 	return index % ARR_X_LENGTH;
 }
 
-void showFinishMessage(double time, int numThreads, int numSteps){
+void showFinishMessage(double time, int numThreads){
 	printf("SIMULACIÓN FINALIZADA\n");
 	printf("----------------------\n");
 	printf("Tamaño de matriz %d x %d\n", ARR_X_LENGTH, ARR_Y_LENGTH);
@@ -367,17 +310,3 @@ void showFinishMessage(double time, int numThreads, int numSteps){
 	printf("\x1b[0m-------------------------------------\n");
 }
 
-void showInitMessage(int mode){
-	if(mode){
-		// Ejecucion paralelizada
-		printf("INICIANDO SIMULACIÓN PARALELIZADA\n");
-		printf("Numero de hilos: %d\n", THREAD_NUMBER);
-		printf("Numero de iteraciones de tiempo: %d\n", NUM_STEPS);
-		printf("-------------------------------------\n");
-	}else{
-		// Ejecucion lineal
-		printf("INICIANDO SIMULACIÓN LINEAL\n");
-		printf("Numero de iteraciones de tiempo: %d\n", NUM_STEPS);
-		printf("-------------------------------------\n");
-	}
-}
