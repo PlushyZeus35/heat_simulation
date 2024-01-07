@@ -1,17 +1,20 @@
 #!/bin/bash
-procesos=4
-debug=0
-executable="simulation"
+PROCESS=4
+EXECUTABLE="simulation"
+TEMPDIRECTORY="temp"
 
 if [ "$#" -ge 1 ]; then
-	procesos=$1
+	PROCESS=$1
 fi
-if [ "$#" -ge 2 ]; then
-	debug=$2
+# Verificar si la carpeta 'temp' existe
+if [ -d "$TEMPDIRECTORY" ]; then
+    # Borrar la carpeta 'temp' y su contenido
+    rm -r "$TEMPDIRECTORY"
+    echo "Carpeta $TEMPDIRECTORY y su contenido eliminados."
 fi
 
-if [ "$debug" -eq 1 ]; then
-	mpirun -v -np $procesos $executable
-else
-	mpirun -np $procesos $executable
-fi
+mkdir "$TEMPDIRECTORY"
+echo "Carpeta $TEMPDIRECTORY creada de nuevo."
+make clean
+make
+mpirun -np $PROCESS $EXECUTABLE
