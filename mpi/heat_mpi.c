@@ -69,7 +69,7 @@ int main(int argc, char** argv){
 	endTime = MPI_Wtime();
 	
 	if(isMaster()){
-		showFinishMessage(endTime-startTime);
+		showFinishMessage(endTime-startTime, nProcs);
 	}
 	
 	free(arr);

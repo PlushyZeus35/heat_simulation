@@ -4,11 +4,12 @@
 #include "constants.h"
 #include <mpi.h>
 
-void showFinishMessage(double time){
+void showFinishMessage(double time, int nProcs){
 	printf("SIMULACIÓN FINALIZADA\n");
 	printf("----------------------\n");
 	printf("Tamaño de matriz %d x %d\n", ARR_X_LENGTH, ARR_Y_LENGTH);
 	printf("Numero de iteraciones: %d\n", NUM_STEPS);
+	printf("Numero de procesos: %d\n", nProcs);
 	printf("\x1b[34mTiempo total de ejecucion: %f\n", time);
 	printf("\x1b[0m-------------------------------------\n");
 }

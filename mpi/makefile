@@ -2,17 +2,17 @@
 TARGET = simulation
 
 # Fuentes
-SRCS = heat_lineal_formatted.c pngwriter.c
+SRCS = heat_mpi.c mpiUtils.c simulationUtils.c logUtils.c pngwriter.c constants.h
 
 # Opciones de compilación
-CFLAGS = -Wall -Wextra -lpng -lpthread
+CFLAGS = -Wall -Wextra -lpng
 
 # Regla por defecto
 all: $(TARGET)
 
 # Regla para compilar el programa
 $(TARGET):	$(SRCS)
-	gcc $^ -o $@ $(CFLAGS)
+	mpicc $^ -o $@ $(CFLAGS)
 
 # Limpieza
 clean:
