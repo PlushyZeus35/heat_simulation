@@ -4,7 +4,7 @@
 #include "constants.h"
 #include "simulationUtils.h"
 #include "logUtils.h"
-#include <time.h>
+#include <sys/time.h>
 
 int main(int argc, char* argv[]){
 	int threadsNumber = THREADS_DEFAULT;
@@ -26,22 +26,20 @@ int main(int argc, char* argv[]){
 	gettimeofday(&start, NULL);
 	#pragma omp parallel num_threads(threadsNumber) private(thread)
 	{
+		if(omp_get_thread_num() == 0){
+			int count = omp_get_num_threads();
+			printf("created %d threads\n", count);
+		}
 		for(int k=0; k<=NUM_STEPS; k++){
-			thread = omp_get_thread_num();
-			//printf("soy %d con iteracion %d\n",thread, k);
+			// Split all cells into all created threads
 			#pragma omp for
 			for(int i=0; i<(ARR_X_LENGTH*ARR_Y_LENGTH); i++){
-				int num_threads = omp_get_num_threads();
-				int thread_id = omp_get_thread_num();
-				//printf("soy %d y calculo celda %d en iteracion %d\n", thread_id, i, k);
 				calcPointHeat(arrAux, arr, i);
 			}
 			
-			int num_threads = omp_get_num_threads();
-			int thread_id = omp_get_thread_num();
-			//printf("soy %d de %d en iteracion %d\n", thread_id, num_threads, k);
+			// Barrier to stamp array and switch plates
 			#pragma omp barrier
-			if(thread_id == 0){
+			if(omp_get_thread_num() == 0){
 				
 				if(k%EACH_STAMP==0){
 					stampArray(arr, k, 0);
@@ -49,9 +47,8 @@ int main(int argc, char* argv[]){
 				temp = arr;
 				arr = arrAux;
 				arrAux = temp;
-				//printf("Iteración %d, cambiados los plates!\n", k);
 			}
-			#pragma omp barrier
+			#pragma omp barrier // Wait to master thread to switch plates
 		}
 			
 	}
