@@ -5,8 +5,8 @@
 #define DIFFUSION_CONSTANT 0.1
 #define X_GRID 0.01
 #define Y_GRID 0.01
-#define ARR_X_LENGTH 200
-#define ARR_Y_LENGTH 200
+#define ARR_X_LENGTH 500
+#define ARR_Y_LENGTH 500
 #define REGULAR_TEMP 50.0
 #define MAX_TEMP 100.0
 #define MIN_TEMP 0.1
@@ -20,6 +20,7 @@
 #define CENTER_Y 50  // Coordenada y del centro
 
 #define MASTER_RANK 0
+#define THREADS_DEFAULT 4
 
 typedef struct {
 	int top;
