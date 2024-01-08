@@ -26,10 +26,6 @@ int main(int argc, char* argv[]){
 	gettimeofday(&start, NULL);
 	#pragma omp parallel num_threads(threadsNumber) private(thread)
 	{
-		if(omp_get_thread_num() == 0){
-			int count = omp_get_num_threads();
-			printf("created %d threads\n", count);
-		}
 		for(int k=0; k<=NUM_STEPS; k++){
 			// Split all cells into all created threads
 			#pragma omp for
