@@ -5,7 +5,7 @@
 #define DIFFUSION_CONSTANT 0.1
 #define X_GRID 0.01
 #define Y_GRID 0.01
-#define ARR_X_LENGTH 500
+#define ARR_X_LENGTH 400
 #define ARR_Y_LENGTH 500
 #define REGULAR_TEMP 50.0
 #define MAX_TEMP 100.0
@@ -21,9 +21,9 @@
 
 #define MASTER_RANK 0
 
-typedef struct {
-	int top;
-	int bottom;
-} Neigs;
+struct ThreadData {
+	int howMany;
+	int* cells;
+};
 
 #endif // CONSTANTS_H
