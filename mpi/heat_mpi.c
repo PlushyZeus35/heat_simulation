@@ -63,7 +63,6 @@ int main(int argc, char** argv){
 		tempAux = arr;
 		arr = arrAux;
 		arrAux = tempAux;
-		//printf("uno\n");
 	}
 	
 	endTime = MPI_Wtime();
