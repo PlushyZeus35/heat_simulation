@@ -1,0 +1,5 @@
+// MPI
+// Compilacion
+mpicc heat_mpi.c mpiUtils.c simulationUtils.c logUtils.c pngwriter.c constants.h -o exec -lpng
+// Execution
+mpirun -np 4 exec

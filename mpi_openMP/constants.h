@@ -21,9 +21,9 @@
 
 #define MASTER_RANK 0
 
-struct ThreadData {
-	int howMany;
-	int* cells;
-};
+typedef struct {
+	int top;
+	int bottom;
+} Neigs;
 
 #endif // CONSTANTS_H

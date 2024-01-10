@@ -2,7 +2,7 @@
 TARGET = simulation
 
 # Fuentes
-SRCS = openMP.c simulationUtils.c logUtils.c pngwriter.c constants.h
+SRCS = heat_mpi_omp.c mpiUtils.c simulationUtils.c logUtils.c pngwriter.c constants.h
 
 # Opciones de compilación
 CFLAGS = -Wall -Wextra -lpng -fopenmp
@@ -12,7 +12,7 @@ all: $(TARGET)
 
 # Regla para compilar el programa
 $(TARGET):	$(SRCS)
-	gcc $^ -o $@ $(CFLAGS)
+	mpicc $^ -o $@ $(CFLAGS)
 
 # Limpieza
 clean:

@@ -19,7 +19,6 @@ int main(int argc, char* argv[]){
 	if(argc>1){
 		threadsNumber = atoi(argv[1]);
 	}
-	
 	arr = initArrData();
 	arrAux = initArrAuxData(arr);
 	// Init time log
