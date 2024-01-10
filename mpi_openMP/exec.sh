@@ -1,10 +1,15 @@
 #!/bin/bash
+PROCESS=4
 THREADS=8
 EXECUTABLE="simulation"
 TEMPDIRECTORY="temp"
 
 if [ "$#" -ge 1 ]; then
-	THREADS=$1
+	PROCESS=$1
+fi
+
+if [ "$#" -ge 2 ]; then
+	THREADS=$2
 fi
 
 # Verificar si la carpeta 'temp' existe
@@ -18,4 +23,4 @@ mkdir "$TEMPDIRECTORY"
 echo "Carpeta $TEMPDIRECTORY creada de nuevo."
 make clean
 make
-./$EXECUTABLE $THREADS
+mpirun -np $PROCESS $EXECUTABLE $THREADS
